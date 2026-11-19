@@ -195,7 +195,31 @@ def collect_google_news_rss():
     )
 
     return news_items
+# --------------------------------------------------
+# BSE RSS feed configuration
+# --------------------------------------------------
 
+BSE_RSS_FEEDS = {
+    "BSE Corporate Announcements":
+        "https://www.bseindia.com/data/xml/announcements.aspx",
+
+    "BSE Financial Results":
+        "https://www.bseindia.com/Data/XML/FinancialResultsFeed.aspx",
+
+    "BSE Board Meetings":
+        "https://beta.bseindia.com/Data/XML/BoardMeetingsFeed.xml",
+
+    "BSE Corporate Actions":
+        "https://www.bseindia.com/data/XML/CorpActionFeed.aspx",
+
+    "BSE Insider Trading":
+        "https://www.bseindia.com/Data/XML/InsiderTradingFeed.aspx",
+
+    "BSE Shareholding Patterns":
+        "https://www.bseindia.com/Data/XML/ShareholdingPattern_Feed.aspx"
+    "BSE Notices":
+        "https://www.bseindia.com/data/xml/notices.xml"
+}
 
 # --------------------------------------------------
 # Telegram notification
