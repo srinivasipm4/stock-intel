@@ -3,6 +3,7 @@ import os
 import json
 import logging
 import re
+import xml.etree.ElementTree as ET
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -142,6 +143,58 @@ def calculate_volume_metrics(volume_rows, stock):
             average_multiple = latest_volume / average_volume
 
     return day_change, average_multiple
+
+
+# --------------------------------------------------
+# Google News RSS collection
+# --------------------------------------------------
+
+def collect_google_news_rss():
+    feed_url = "https://news.google.com/rss/search"
+
+    params = {
+        "q": "Indian stock market OR NSE OR BSE OR Nifty OR Sensex when:1d",
+        "hl": "en-IN",
+        "gl": "IN",
+        "ceid": "IN:en"
+    }
+
+    headers = {
+        "User-Agent": "Mozilla/5.0"
+    }
+
+    response = requests.get(
+        feed_url,
+        params=params,
+        headers=headers,
+        timeout=30
+    )
+
+    response.raise_for_status()
+
+    root = ET.fromstring(response.content)
+    news_items = []
+
+    for item in root.findall(".//item"):
+        source_element = item.find("source")
+
+        news_items.append({
+            "title": item.findtext("title", default="").strip(),
+            "link": item.findtext("link", default="").strip(),
+            "published": item.findtext("pubDate", default="").strip(),
+            "source": (
+                source_element.text.strip()
+                if source_element is not None and source_element.text
+                else "Google News"
+            )
+        })
+
+    logging.info(
+        "Google News RSS collected %s headlines",
+        len(news_items)
+    )
+
+    return news_items
 
 
 # --------------------------------------------------
