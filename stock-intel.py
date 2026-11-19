@@ -2,22 +2,38 @@
 import os
 import json
 import logging
-from datetime import datetime, timezone
+import re
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import gspread
-from google.oauth2.service_account import Credentials
 import requests
+from google.oauth2.service_account import Credentials
 
 # --------------------------------------------------
 # Configuration
 # --------------------------------------------------
 
 SHEET_ID = "1O6hiefoF3IlStKFJrC7RD827GsOC5asWbEht6Sw_SC8"
-WORKSHEET_NAME = "Watchlist"
+
+WATCHLIST_TAB = "Watchlist"
+VOLUME_TAB = "Volume_History"
+ALERT_LOG_TAB = "Alert_Log"
 
 TELEGRAM_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 SERVICE_ACCOUNT_JSON = os.environ["GOOGLE_SERVICE_ACCOUNT_JSON"]
+
+ALERT_API_SECRET = os.environ["ALERT_API_SECRET"]
+ALERT_WEB_APP_URL = os.environ["ALERT_WEB_APP_URL"]
+
+IST = ZoneInfo("Asia/Kolkata")
+
+THRESHOLDS = [
+    (-2.0, "-2%"),
+    (-5.0, "-5%"),
+    (-10.0, "-10%"),
+]
 
 logging.basicConfig(
     level=logging.INFO,
@@ -28,24 +44,104 @@ logging.basicConfig(
 # Google Sheets connection
 # --------------------------------------------------
 
-def connect_to_sheet():
+def connect_to_spreadsheet():
     credentials_info = json.loads(SERVICE_ACCOUNT_JSON)
-
-    scopes = [
-        "https://www.googleapis.com/auth/spreadsheets.readonly"
-    ]
 
     credentials = Credentials.from_service_account_info(
         credentials_info,
-        scopes=scopes
+        scopes=[
+            "https://www.googleapis.com/auth/spreadsheets.readonly"
+        ]
     )
 
     client = gspread.authorize(credentials)
+    return client.open_by_key(SHEET_ID)
 
-    spreadsheet = client.open_by_key(SHEET_ID)
-    worksheet = spreadsheet.worksheet(WORKSHEET_NAME)
 
-    return worksheet
+# --------------------------------------------------
+# Read percentage change
+# --------------------------------------------------
+
+def parse_percentage(value):
+    if value is None or str(value).strip() == "":
+        return None
+
+    text = str(value).strip()
+    text = text.replace("−", "-").replace(",", "")
+
+    has_percent_sign = "%" in text
+    text = text.replace("%", "").strip()
+
+    try:
+        number = float(text)
+    except ValueError:
+        return None
+
+    # Handle an unformatted decimal percentage such as -0.024.
+    if not has_percent_sign and -1 < number < 1:
+        number *= 100
+
+    return number
+
+
+# --------------------------------------------------
+# Read volume history and calculate indicators
+# --------------------------------------------------
+
+def calculate_volume_metrics(volume_rows, stock):
+    records = []
+
+    for row in volume_rows:
+        if len(row) < 3:
+            continue
+
+        date_text = str(row[0]).strip()
+        stock_code = str(row[1]).strip()
+
+        if stock_code != stock:
+            continue
+
+        match = re.search(r"\d{4}-\d{2}-\d{2}", date_text)
+
+        if not match:
+            continue
+
+        try:
+            volume = float(str(row[2]).replace(",", ""))
+        except (ValueError, TypeError):
+            continue
+
+        records.append((match.group(0), volume))
+
+    # Keep one record per date, then sort chronologically.
+    by_date = {date: volume for date, volume in records}
+    records = sorted(by_date.items(), key=lambda item: item[0])
+
+    if len(records) < 2:
+        return None, None
+
+    latest_volume = records[-1][1]
+    previous_volume = records[-2][1]
+
+    day_change = None
+    if previous_volume > 0:
+        day_change = (
+            (latest_volume - previous_volume)
+            / previous_volume
+        ) * 100
+
+    average_multiple = None
+
+    # Compare the latest session with the previous 20 sessions.
+    previous_20 = [volume for _, volume in records[-21:-1]]
+
+    if len(previous_20) == 20:
+        average_volume = sum(previous_20) / 20
+
+        if average_volume > 0:
+            average_multiple = latest_volume / average_volume
+
+    return day_change, average_multiple
 
 
 # --------------------------------------------------
@@ -53,7 +149,10 @@ def connect_to_sheet():
 # --------------------------------------------------
 
 def send_telegram_message(message):
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    url = (
+        f"https://api.telegram.org/bot"
+        f"{TELEGRAM_TOKEN}/sendMessage"
+    )
 
     response = requests.post(
         url,
@@ -61,45 +160,210 @@ def send_telegram_message(message):
             "chat_id": TELEGRAM_CHAT_ID,
             "text": message
         },
-        timeout=20
+        timeout=30
     )
 
     response.raise_for_status()
 
+    result = response.json()
 
-# --------------------------------------------------
-# Read watchlist
-# --------------------------------------------------
-
-def read_watchlist():
-    worksheet = connect_to_sheet()
-    rows = worksheet.get_all_records()
-
-    logging.info("Read %s stock rows from Google Sheet", len(rows))
-
-    return rows
+    if not result.get("ok"):
+        raise RuntimeError("Telegram did not confirm message delivery.")
 
 
 # --------------------------------------------------
-# Initial connection test
+# Read existing alert records
+# --------------------------------------------------
+
+def read_existing_alerts(alert_rows):
+    today = datetime.now(IST).strftime("%Y-%m-%d")
+    sent = set()
+
+    for row in alert_rows[1:]:
+        if len(row) < 3:
+            continue
+
+        date_text = str(row[0]).strip()
+        stock = str(row[1]).strip()
+        level = str(row[2]).strip()
+
+        match = re.search(r"\d{4}-\d{2}-\d{2}", date_text)
+
+        if match and match.group(0) == today:
+            sent.add((stock, level))
+
+    return today, sent
+
+
+# --------------------------------------------------
+# Record alert through Apps Script
+# --------------------------------------------------
+
+def record_alert(date, stock, level, price_change):
+    response = requests.post(
+        ALERT_WEB_APP_URL,
+        json={
+            "secret": ALERT_API_SECRET,
+            "date": date,
+            "stock": stock,
+            "alertLevel": level,
+            "priceChange": price_change
+        },
+        timeout=30,
+        allow_redirects=True
+    )
+
+    response.raise_for_status()
+
+    try:
+        result = response.json()
+    except ValueError as error:
+        raise RuntimeError(
+            "Alert logger returned an unreadable response."
+        ) from error
+
+    if not result.get("success"):
+        raise RuntimeError(
+            f"Alert logger rejected the record: {result}"
+        )
+
+    logging.info(
+        "Alert log recorded: %s %s (duplicate=%s)",
+        stock,
+        level,
+        result.get("duplicate", False)
+    )
+
+
+# --------------------------------------------------
+# Main alert engine
 # --------------------------------------------------
 
 def main():
     logging.info("Starting Indian Stock Intelligence Agent")
 
-    stocks = read_watchlist()
+    spreadsheet = connect_to_spreadsheet()
 
-    message = (
-        "✅ Stock Intelligence Agent connected!\n\n"
-        f"Watchlist: {len(stocks)} stocks\n"
-        f"Sheet tab: {WORKSHEET_NAME}\n"
-        f"Time (UTC): {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}\n\n"
-        "Google Sheets connection successful."
+    watchlist = spreadsheet.worksheet(
+        WATCHLIST_TAB
+    ).get_all_records()
+
+    volume_rows = spreadsheet.worksheet(
+        VOLUME_TAB
+    ).get_all_values()
+
+    alert_rows = spreadsheet.worksheet(
+        ALERT_LOG_TAB
+    ).get_all_values()
+
+    today, already_sent = read_existing_alerts(alert_rows)
+
+    logging.info(
+        "Read %s watchlist rows and %s volume rows",
+        len(watchlist),
+        max(0, len(volume_rows) - 1)
     )
 
-    send_telegram_message(message)
+    alerts_sent = 0
 
-    logging.info("Telegram test message sent successfully")
+    for stock_row in watchlist:
+        stock = str(stock_row.get("CODE", "")).strip()
+        stock_name = str(stock_row.get("STOCK", stock)).strip()
+
+        if not stock:
+            continue
+
+        price_change = parse_percentage(
+            stock_row.get("Change")
+        )
+
+        if price_change is None:
+            logging.warning(
+                "Could not read percentage change for %s",
+                stock
+            )
+            continue
+
+        # Find all newly breached thresholds.
+        new_levels = [
+            (threshold, level)
+            for threshold, level in THRESHOLDS
+            if price_change <= threshold
+            and (stock, level) not in already_sent
+        ]
+
+        if not new_levels:
+            continue
+
+        # Send one consolidated message if several levels
+        # were crossed between scheduled scans.
+        breached_levels = [
+            level for _, level in new_levels
+        ]
+
+        day_volume_change, average_multiple = (
+            calculate_volume_metrics(volume_rows, stock)
+        )
+
+        message = (
+            "🚨 INDIAN STOCK PRICE ALERT\n\n"
+            f"Stock: {stock_name}\n"
+            f"Code: {stock}\n"
+            f"Today's price change: {price_change:.2f}%\n"
+            f"New threshold(s) crossed: {', '.join(breached_levels)}\n"
+        )
+
+        if day_volume_change is not None:
+            message += (
+                f"\nVolume vs previous session: "
+                f"{day_volume_change:+.1f}%"
+            )
+        else:
+            message += (
+                "\nVolume vs previous session: Not available"
+            )
+
+        if average_multiple is not None:
+            message += (
+                f"\nVolume vs 20-day average: "
+                f"{average_multiple:.2f}x"
+            )
+        else:
+            message += (
+                "\nVolume vs 20-day average: "
+                "Not enough history"
+            )
+
+        message += (
+            "\n\nVolume is additional information; "
+            "it does not determine whether a price alert is sent."
+        )
+
+        # Send Telegram first. Only record alerts after
+        # Telegram confirms successful delivery.
+        send_telegram_message(message)
+
+        for _, level in new_levels:
+            record_alert(
+                today,
+                stock,
+                level,
+                price_change
+            )
+            already_sent.add((stock, level))
+
+        alerts_sent += 1
+
+        logging.info(
+            "Alert sent for %s at %s",
+            stock,
+            price_change
+        )
+
+    logging.info(
+        "Agent completed. Notifications sent: %s",
+        alerts_sent
+    )
 
 
 if __name__ == "__main__":
