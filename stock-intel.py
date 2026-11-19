@@ -195,6 +195,39 @@ def collect_google_news_rss():
     )
 
     return news_items
+
+
+# --------------------------------------------------
+# NSE RSS feed configuration
+# --------------------------------------------------
+
+NSE_RSS_FEEDS = {
+    "NSE Corporate Announcements":
+        "https://nsearchives.nseindia.com/content/RSS/Online_announcements.xml",
+
+    "NSE Financial Results":
+        "https://nsearchives.nseindia.com/content/RSS/Financial_Results.xml",
+
+    "NSE Board Meetings":
+        "https://nsearchives.nseindia.com/content/RSS/Board_Meetings.xml",
+
+    "NSE Corporate Actions":
+        "https://nsearchives.nseindia.com/content/RSS/Corporate_action.xml",
+
+    "NSE Insider Trading":
+        "https://nsearchives.nseindia.com/content/RSS/Insider_Trading.xml",
+
+    "NSE Shareholding Patterns":
+        "https://nsearchives.nseindia.com/content/RSS/Shareholding_Pattern.xml",
+
+    "NSE Circulars":
+        "https://nsearchives.nseindia.com/content/RSS/Circulars.xml",
+
+    "NSE Annual Reports":
+        "https://nsearchives.nseindia.com/content/RSS/Annual_Reports.xml"
+}
+
+
 # --------------------------------------------------
 # BSE RSS feed configuration
 # --------------------------------------------------
@@ -216,10 +249,12 @@ BSE_RSS_FEEDS = {
         "https://www.bseindia.com/Data/XML/InsiderTradingFeed.aspx",
 
     "BSE Shareholding Patterns":
-        "https://www.bseindia.com/Data/XML/ShareholdingPattern_Feed.aspx"
+        "https://www.bseindia.com/Data/XML/ShareholdingPattern_Feed.aspx",
+    
     "BSE Notices":
         "https://www.bseindia.com/data/xml/notices.xml"
 }
+
 
 # --------------------------------------------------
 # Telegram notification
