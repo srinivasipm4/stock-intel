@@ -334,11 +334,6 @@ def main():
                 "Not enough history"
             )
 
-        message += (
-            "\n\nVolume is additional information; "
-            "it does not determine whether a price alert is sent."
-        )
-
         # Send Telegram first. Only record alerts after
         # Telegram confirms successful delivery.
         send_telegram_message(message)
