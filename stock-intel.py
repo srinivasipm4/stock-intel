@@ -257,6 +257,72 @@ BSE_RSS_FEEDS = {
 
 
 # --------------------------------------------------
+# Common NSE and BSE RSS feed collector
+# --------------------------------------------------
+
+def collect_exchange_rss():
+    all_news = []
+
+    feeds = {
+        **NSE_RSS_FEEDS,
+        **BSE_RSS_FEEDS
+    }
+
+    headers = {
+        "User-Agent": "Mozilla/5.0"
+    }
+
+    for feed_name, feed_url in feeds.items():
+        try:
+            response = requests.get(
+                feed_url,
+                headers=headers,
+                timeout=30
+            )
+
+            response.raise_for_status()
+
+            root = ET.fromstring(response.content)
+
+            items = root.findall(".//item")
+
+            for item in items:
+                title = item.findtext("title", default="").strip()
+                link = item.findtext("link", default="").strip()
+                published = item.findtext("pubDate", default="").strip()
+
+                if not title:
+                    continue
+
+                all_news.append({
+                    "title": title,
+                    "link": link,
+                    "published": published,
+                    "source": feed_name
+                })
+
+            logging.info(
+                "%s: Retrieved %s items",
+                feed_name,
+                len(items)
+            )
+
+        except Exception as error:
+            logging.warning(
+                "%s feed failed: %s",
+                feed_name,
+                error
+            )
+
+    logging.info(
+        "Total NSE and BSE RSS items collected: %s",
+        len(all_news)
+    )
+
+    return all_news
+
+
+# --------------------------------------------------
 # Telegram notification
 # --------------------------------------------------
 
@@ -465,6 +531,48 @@ def main():
             "Alert sent for %s at %s",
             stock,
             price_change
+        )
+
+     # Combined RSS connectivity test
+
+    all_news = []
+
+    try:
+        google_news = collect_google_news_rss()
+        all_news.extend(google_news)
+
+        logging.info(
+            "Google News RSS: Retrieved %s headlines",
+            len(google_news)
+        )
+
+    except Exception:
+        logging.exception("Google News RSS test failed")
+
+    try:
+        exchange_news = collect_exchange_rss()
+        all_news.extend(exchange_news)
+
+        logging.info(
+            "NSE/BSE RSS: Retrieved %s headlines",
+            len(exchange_news)
+        )
+
+    except Exception:
+        logging.exception("NSE/BSE RSS test failed")
+
+    logging.info(
+        "COMBINED RSS TEST: Retrieved %s total headlines",
+        len(all_news)
+    )
+
+    for item in all_news[:15]:
+        logging.info(
+            "RSS HEADLINE: %s | SOURCE: %s | DATE: %s | LINK: %s",
+            item["title"],
+            item["source"],
+            item["published"],
+            item["link"]
         )
 
     logging.info(
