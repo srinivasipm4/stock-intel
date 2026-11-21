@@ -256,6 +256,60 @@ BSE_RSS_FEEDS = {
 }
 
 
+def collect_media_rss():
+    """Collect public headlines from Business Standard and Mint RSS feeds."""
+    all_news = []
+
+    feeds = {
+        "Business Standard Markets":
+            "https://www.business-standard.com/rss/markets-106.rss",
+        "Business Standard India":
+            "https://www.business-standard.com/rss/india-news-216.rss",
+        "Business Standard Companies":
+            "https://www.business-standard.com/rss/companies-101.rss",
+        "Mint Markets":
+            "https://www.livemint.com/rss/marketsRSS",
+        "Mint Companies":
+            "https://www.livemint.com/rss/companiesRSS",
+        "Mint Industry":
+            "https://www.livemint.com/rss/industryRSS"
+    }
+
+    for source, feed_url in feeds.items():
+        try:
+            response = requests.get(
+                feed_url,
+                timeout=20,
+                headers={"User-Agent": "Mozilla/5.0"}
+            )
+            response.raise_for_status()
+
+            root = ET.fromstring(response.content)
+
+            for item in root.findall(".//item"):
+                title = item.findtext("title", "").strip()
+                link = item.findtext("link", "").strip()
+                published = item.findtext("pubDate", "").strip()
+
+                if title and link:
+                    all_news.append({
+                        "title": title,
+                        "link": link,
+                        "source": source,
+                        "published": published
+                    })
+
+        except Exception as e:
+            logging.warning(
+                f"Could not collect {source} RSS: {e}"
+            )
+
+    logging.info(
+        f"Collected {len(all_news)} headlines from media RSS feeds."
+    )
+    return all_news
+
+
 # --------------------------------------------------
 # Common NSE and BSE RSS feed collector
 # --------------------------------------------------
