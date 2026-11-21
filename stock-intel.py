@@ -441,6 +441,84 @@ def collect_exchange_rss():
     return all_news
 
 
+def analyze_stock_drop(stock_name, stock_code, price_change, news_items):
+    """Analyse available news for a stock price decline."""
+
+    api_key = os.getenv("GEMINI_API_KEY")
+
+    if not api_key:
+        return "AI analysis unavailable: Gemini API key not configured."
+
+    if not news_items:
+        return "No relevant news found. No clear explanation identified."
+
+    try:
+        client = genai.Client(api_key=api_key)
+
+        relevant_news = news_items[:30]
+
+        news_text = "\n".join(
+            f"Headline: {item.get('title', '')}\n"
+            f"Source: {item.get('source', '')}\n"
+            f"Date: {item.get('published', '')}\n"
+            f"Link: {item.get('link', '')}"
+            for item in relevant_news
+        )
+
+        prompt = f"""
+You are an Indian stock market news analyst.
+
+Stock: {stock_name}
+Stock code: {stock_code}
+Today's price change: {price_change:.2f}%
+
+Review these news headlines and source links:
+
+{news_text}
+
+Produce a concise analysis with these sections:
+
+1. CONFIRMED DEVELOPMENTS:
+Include only developments explicitly supported by an identifiable
+official source such as NSE, BSE, SEBI, RBI, PIB, a government
+department, a court, or a company filing.
+Include the source name and link.
+If none qualify, write "None identified".
+
+2. POSSIBLE EXPLANATIONS:
+List plausible explanations suggested by media reports or headlines.
+Clearly label them as unconfirmed possibilities.
+Include source names and links.
+Do not claim they caused the price fall.
+
+3. OVERALL ASSESSMENT:
+Choose one:
+- Official development identified
+- Possible explanation only
+- No clear explanation found
+
+Never invent facts, sources, links, or causal relationships.
+Do not treat an article headline alone as proof of causation.
+Keep the response concise.
+"""
+
+        response = client.models.generate_content(
+            model="gemini-3.8-flash",
+            contents=prompt
+        )
+
+        result = (response.text or "").strip()
+
+        if not result:
+            return "AI analysis unavailable: empty response."
+
+        return result
+
+    except Exception:
+        logging.exception("Gemini stock-drop analysis failed")
+        return "AI analysis unavailable. No cause has been verified."
+
+
 # --------------------------------------------------
 # Telegram notification
 # --------------------------------------------------
