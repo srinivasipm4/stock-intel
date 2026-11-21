@@ -270,7 +270,7 @@ def collect_marketaux_news():
         "api_token": api_key,
         "language": "en",
         "limit": 3,
-        "sort": "published_desc"
+        
     }
 
     try:
