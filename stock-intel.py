@@ -453,7 +453,10 @@ def analyze_stock_drop(stock_name, stock_code, price_change, news_items):
         return "No relevant news found. No clear explanation identified."
 
     try:
-        client = genai.Client(api_key=api_key)
+            client = genai.Client(
+                api_key=api_key,
+                http_options=genai.types.HttpOptions(timeout=30000)
+            )
 
         relevant_news = news_items[:30]
 
