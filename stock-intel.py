@@ -442,19 +442,95 @@ def collect_exchange_rss():
 
 
 
+
 def analyze_stock_drop(stock_name, stock_code, price_change, news_items):
-    """Analyse a stock decline using Gemini, Groq and OpenRouter."""
+    """Analyse a stock decline using stock-specific news and AI fallbacks."""
+
+    import re
 
     if not news_items:
         return "No relevant news found. No clear explanation identified."
 
-    relevant_news = news_items[:30]
+    def normalise(value):
+        return re.sub(r"[^a-z0-9]+", " ", str(value).lower()).strip()
 
-    news_text = "\n".join(
-        f"Headline: {item.get('title', '')}\n"
-        f"Source: {item.get('source', '')}\n"
-        f"Date: {item.get('published', '')}\n"
-        f"Link: {item.get('link', '')}"
+    name_normalised = normalise(stock_name)
+    code_normalised = normalise(stock_code)
+
+    # Remove exchange prefixes such as NSE or BSE.
+    code_parts = code_normalised.split()
+    ticker = code_parts[-1] if code_parts else ""
+
+    # Avoid generic company-name words causing false matches.
+    generic_words = {
+        "limited", "ltd", "industries", "industry", "company",
+        "corporation", "corporate", "enterprises", "enterprise",
+        "india", "indian", "group", "services", "service",
+        "holdings", "holding", "private", "public"
+    }
+
+    name_terms = [
+        word for word in name_normalised.split()
+        if len(word) >= 5 and word not in generic_words
+    ]
+
+    matched_articles = []
+
+    for item in news_items:
+        title = str(item.get("title", ""))
+        source = str(item.get("source", ""))
+        link = str(item.get("link", ""))
+
+        searchable = normalise(" ".join([
+            title,
+            str(item.get("description", "")),
+            str(item.get("summary", "")),
+            str(item.get("content", "")),
+            str(item.get("entities", "")),
+            str(item.get("matched_entities", "")),
+            link
+        ]))
+
+        score = 0
+
+        # Exact company-name match.
+        if name_normalised and name_normalised in searchable:
+            score += 10
+
+        # Exact ticker match as a separate word.
+        if ticker and len(ticker) >= 3:
+            if re.search(r"\b" + re.escape(ticker) + r"\b", searchable):
+                score += 8
+
+        # Distinctive company-name terms.
+        for term in name_terms:
+            if re.search(r"\b" + re.escape(term) + r"\b", searchable):
+                score += 3
+
+        if score > 0:
+            matched_articles.append((score, item))
+
+    if not matched_articles:
+        logging.info(
+            "No stock-specific news matched for %s (%s)",
+            stock_name, stock_code
+        )
+        return "No stock-specific news found. No clear explanation identified."
+
+    # Highest relevance first; limit the AI request to eight articles.
+    matched_articles.sort(key=lambda entry: entry[0], reverse=True)
+    relevant_news = [item for _, item in matched_articles[:8]]
+
+    logging.info(
+        "Selected %s stock-specific articles from %s collected articles for %s",
+        len(relevant_news), len(news_items), stock_code
+    )
+
+    news_text = "\n\n".join(
+        f"Headline: {str(item.get('title', ''))[:500]}\n"
+        f"Source: {str(item.get('source', ''))[:150]}\n"
+        f"Date: {str(item.get('published', ''))[:80]}\n"
+        f"Link: {str(item.get('link', ''))[:500]}"
         for item in relevant_news
     )
 
@@ -465,7 +541,8 @@ Stock: {stock_name}
 Stock code: {stock_code}
 Today's price change: {price_change:.2f}%
 
-Review these news headlines and source links:
+The following articles were selected because they appear relevant
+to this company. Relevance does not prove causation.
 
 {news_text}
 
@@ -473,13 +550,13 @@ Produce a concise analysis with these sections:
 
 1. CONFIRMED DEVELOPMENTS:
 Include only developments explicitly supported by an identifiable
-official source such as NSE, BSE, SEBI, RBI, PIB, a government
+official source, such as NSE, BSE, SEBI, RBI, PIB, a government
 department, a court, or a company filing.
 Include the source name and link.
 If none qualify, write "None identified".
 
 2. POSSIBLE EXPLANATIONS:
-List plausible explanations suggested by media reports or headlines.
+List plausible explanations suggested by the supplied reports.
 Clearly label them as unconfirmed possibilities.
 Include source names and links.
 Do not claim they caused the price fall.
@@ -492,6 +569,7 @@ Choose one:
 
 Never invent facts, sources, links, or causal relationships.
 Do not treat an article headline alone as proof of causation.
+If the supplied articles do not support an explanation, say so.
 Keep the response concise.
 """
 
@@ -536,9 +614,7 @@ Keep the response concise.
                 },
                 json={
                     "model": "openai/gpt-oss-20b",
-                    "messages": [
-                        {"role": "user", "content": prompt}
-                    ],
+                    "messages": [{"role": "user", "content": prompt}],
                     "temperature": 0.2,
                     "max_tokens": 700
                 },
@@ -570,9 +646,7 @@ Keep the response concise.
                 },
                 json={
                     "model": "openrouter/free",
-                    "messages": [
-                        {"role": "user", "content": prompt}
-                    ],
+                    "messages": [{"role": "user", "content": prompt}],
                     "temperature": 0.2,
                     "max_tokens": 700
                 },
@@ -593,7 +667,6 @@ Keep the response concise.
 
     logging.error("All three AI providers failed")
     return "AI analysis unavailable. No cause has been verified."
-
 
 # --------------------------------------------------
 # Telegram notification
