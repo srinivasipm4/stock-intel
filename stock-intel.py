@@ -440,10 +440,14 @@ def collect_exchange_rss():
 
     return all_news
 
-
-
-
-def analyze_stock_drop(stock_name, stock_code, price_change, news_items):
+def analyze_stock_drop(
+    stock_name,
+    stock_code,
+    company_name,
+    aliases,
+    price_change,
+    news_items
+):
     """Analyse a stock decline using stock-specific news and AI fallbacks."""
 
     import re
@@ -454,13 +458,31 @@ def analyze_stock_drop(stock_name, stock_code, price_change, news_items):
     def normalise(value):
         return re.sub(r"[^a-z0-9]+", " ", str(value).lower()).strip()
 
-    name_normalised = normalise(stock_name)
+    company_normalised = normalise(company_name)
+    stock_name_normalised = normalise(stock_name)
     code_normalised = normalise(stock_code)
 
+    alias_list = [
+    normalise(alias)
+    for alias in str(aliases or "").split(",")
+    if normalise(alias)
+    ]
+
+    identity_names = [
+        name for name in [
+            company_normalised,
+            stock_name_normalised,
+            *alias_list
+        ]
+        if name
+    ]
+
+    
     # Remove exchange prefixes such as NSE or BSE.
     code_parts = code_normalised.split()
     ticker = code_parts[-1] if code_parts else ""
 
+    # Avoid generic company-name words causing false matches.
     # Avoid generic company-name words causing false matches.
     generic_words = {
         "limited", "ltd", "industries", "industry", "company",
@@ -469,11 +491,13 @@ def analyze_stock_drop(stock_name, stock_code, price_change, news_items):
         "holdings", "holding", "private", "public"
     }
 
-    name_terms = [
-        word for word in name_normalised.split()
+    name_terms = {
+        word
+        for name in identity_names
+        for word in name.split()
         if len(word) >= 5 and word not in generic_words
-    ]
-
+    }
+    
     matched_articles = []
 
     for item in news_items:
@@ -493,19 +517,29 @@ def analyze_stock_drop(stock_name, stock_code, price_change, news_items):
 
         score = 0
 
-        # Exact company-name match.
-        if name_normalised and name_normalised in searchable:
-            score += 10
-
+        # Match the full legal name, stock name, or any alias.
+        for identity_name in identity_names:
+            if re.search(
+                r"\b" + re.escape(identity_name) + r"\b",
+                searchable
+            ):
+                score += 12
+                break
         # Exact ticker match as a separate word.
         if ticker and len(ticker) >= 3:
             if re.search(r"\b" + re.escape(ticker) + r"\b", searchable):
                 score += 8
 
         # Distinctive company-name terms.
-        for term in name_terms:
-            if re.search(r"\b" + re.escape(term) + r"\b", searchable):
-                score += 3
+        # Give supporting weight when at least two distinctive
+        # company-name words appear in the article.
+        matched_terms = {
+            term for term in name_terms
+            if re.search(r"\b" + re.escape(term) + r"\b", searchable)
+        }
+
+        if len(matched_terms) >= 2:
+            score += min(6, len(matched_terms) * 2)
 
         if score > 0:
             matched_articles.append((score, item))
@@ -537,7 +571,9 @@ def analyze_stock_drop(stock_name, stock_code, price_change, news_items):
     prompt = f"""
 You are an Indian stock market news analyst.
 
-Stock: {stock_name}
+Stock name: {stock_name}
+Legal company name: {company_name}
+Other names / aliases: {aliases}
 Stock code: {stock_code}
 Today's price change: {price_change:.2f}%
 
@@ -852,12 +888,24 @@ def main():
         day_volume_change, average_multiple = (
             calculate_volume_metrics(volume_rows, stock)
         )
+        
+        company_name = str(
+            stock_row.get("COMPANY", "")
+        ).strip()
+
+        aliases = str(
+            stock_row.get("ALIASES", "")
+        ).strip()
+
         drop_analysis = analyze_stock_drop(
             stock_name,
             stock,
+            company_name,
+            aliases,
             price_change,
             alert_news or []
         )
+        
         message = (
             "🚨 INDIAN STOCK PRICE ALERT\n\n"
             f"Stock: {stock_name}\n"
