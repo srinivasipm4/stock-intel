@@ -703,7 +703,12 @@ def main():
         day_volume_change, average_multiple = (
             calculate_volume_metrics(volume_rows, stock)
         )
-
+        drop_analysis = analyze_stock_drop(
+            stock_name,
+            stock,
+            price_change,
+            alert_news or []
+        )
         message = (
             "🚨 INDIAN STOCK PRICE ALERT\n\n"
             f"Stock: {stock_name}\n"
@@ -732,7 +737,10 @@ def main():
                 "\nVolume vs 20-day average: "
                 "Not enough history"
             )
-
+        message += (
+            "\n\n📰 AI NEWS ANALYSIS\n"
+            f"{drop_analysis}"
+        )
         # Send Telegram first. Only record alerts after
         # Telegram confirms successful delivery.
         send_telegram_message(message)
