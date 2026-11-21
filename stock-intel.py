@@ -561,7 +561,8 @@ def main():
     )
 
     alerts_sent = 0
-
+    alert_news = None
+    
     for stock_row in watchlist:
         stock = str(stock_row.get("CODE", "")).strip()
         stock_name = str(stock_row.get("STOCK", stock)).strip()
@@ -590,7 +591,30 @@ def main():
 
         if not new_levels:
             continue
+                # Fetch news once per run, only when a new alert exists.
+        if alert_news is None:
+            alert_news = []
 
+            news_collectors = [
+                collect_google_news_rss,
+                collect_exchange_rss,
+                collect_media_rss,
+                collect_marketaux_news
+            ]
+
+            for collector in news_collectors:
+                try:
+                    alert_news.extend(collector())
+                except Exception:
+                    logging.exception(
+                        "News collection failed: %s",
+                        collector.__name__
+                    )
+
+            logging.info(
+                "Collected %s news articles for price-alert analysis",
+                len(alert_news)
+            )
         # Send one consolidated message if several levels
         # were crossed between scheduled scans.
         breached_levels = [
@@ -651,48 +675,7 @@ def main():
             price_change
         )
 
-     # Combined RSS connectivity test
-
-    all_news = []
-
-    try:
-        google_news = collect_google_news_rss()
-        all_news.extend(google_news)
-
-        logging.info(
-            "Google News RSS: Retrieved %s headlines",
-            len(google_news)
-        )
-
-    except Exception:
-        logging.exception("Google News RSS test failed")
-
-    try:
-        exchange_news = collect_exchange_rss()
-        all_news.extend(exchange_news)
-
-        logging.info(
-            "NSE/BSE RSS: Retrieved %s headlines",
-            len(exchange_news)
-        )
-
-    except Exception:
-        logging.exception("NSE/BSE RSS test failed")
-
-    logging.info(
-        "COMBINED RSS TEST: Retrieved %s total headlines",
-        len(all_news)
-    )
-
-    for item in all_news[:15]:
-        logging.info(
-            "RSS HEADLINE: %s | SOURCE: %s | DATE: %s | LINK: %s",
-            item["title"],
-            item["source"],
-            item["published"],
-            item["link"]
-        )
-
+    
     logging.info(
         "Agent completed. Notifications sent: %s",
         alerts_sent
