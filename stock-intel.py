@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 
 import gspread
 import requests
+from google import genai
 from google.oauth2.service_account import Credentials
 
 # --------------------------------------------------
