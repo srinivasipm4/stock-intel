@@ -441,34 +441,24 @@ def collect_exchange_rss():
     return all_news
 
 
+
 def analyze_stock_drop(stock_name, stock_code, price_change, news_items):
-    """Analyse available news for a stock price decline."""
-
-    api_key = os.getenv("GEMINI_API_KEY")
-
-    if not api_key:
-        return "AI analysis unavailable: Gemini API key not configured."
+    """Analyse a stock decline using Gemini, Groq and OpenRouter."""
 
     if not news_items:
         return "No relevant news found. No clear explanation identified."
 
-    try:
-            client = genai.Client(
-                api_key=api_key,
-                http_options=genai.types.HttpOptions(timeout=30000)
-            )
+    relevant_news = news_items[:30]
 
-        relevant_news = news_items[:30]
+    news_text = "\n".join(
+        f"Headline: {item.get('title', '')}\n"
+        f"Source: {item.get('source', '')}\n"
+        f"Date: {item.get('published', '')}\n"
+        f"Link: {item.get('link', '')}"
+        for item in relevant_news
+    )
 
-        news_text = "\n".join(
-            f"Headline: {item.get('title', '')}\n"
-            f"Source: {item.get('source', '')}\n"
-            f"Date: {item.get('published', '')}\n"
-            f"Link: {item.get('link', '')}"
-            for item in relevant_news
-        )
-
-        prompt = f"""
+    prompt = f"""
 You are an Indian stock market news analyst.
 
 Stock: {stock_name}
@@ -505,21 +495,104 @@ Do not treat an article headline alone as proof of causation.
 Keep the response concise.
 """
 
-        response = client.models.generate_content(
-            model="gemini-3.8-flash",
-            contents=prompt
-        )
+    # Provider 1: Gemini
+    api_key = os.getenv("GEMINI_API_KEY")
 
-        result = (response.text or "").strip()
+    if api_key:
+        try:
+            client = genai.Client(
+                api_key=api_key,
+                http_options=genai.types.HttpOptions(timeout=30000)
+            )
 
-        if not result:
-            return "AI analysis unavailable: empty response."
+            response = client.models.generate_content(
+                model="gemini-3.8-flash",
+                contents=prompt
+            )
 
-        return result
+            result = (response.text or "").strip()
 
-    except Exception:
-        logging.exception("Gemini stock-drop analysis failed")
-        return "AI analysis unavailable. No cause has been verified."
+            if result:
+                logging.info("Stock-drop analysis completed using Gemini")
+                return result
+
+            logging.warning("Gemini returned an empty response")
+
+        except Exception:
+            logging.exception("Gemini stock-drop analysis failed")
+    else:
+        logging.warning("Gemini API key is not configured")
+
+    # Provider 2: Groq
+    groq_key = os.getenv("GROQ_API_KEY")
+
+    if groq_key:
+        try:
+            response = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {groq_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": "openai/gpt-oss-20b",
+                    "messages": [
+                        {"role": "user", "content": prompt}
+                    ],
+                    "temperature": 0.2,
+                    "max_tokens": 700
+                },
+                timeout=30
+            )
+            response.raise_for_status()
+
+            result = response.json()["choices"][0]["message"]["content"]
+
+            if result and result.strip():
+                logging.info("Stock-drop analysis completed using Groq")
+                return "🟡 Backup AI: Groq\n" + result.strip()
+
+        except Exception:
+            logging.exception("Groq backup failed")
+    else:
+        logging.warning("Groq API key is not configured")
+
+    # Provider 3: OpenRouter
+    openrouter_key = os.getenv("OPENROUTER_API_KEY")
+
+    if openrouter_key:
+        try:
+            response = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {openrouter_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": "openrouter/free",
+                    "messages": [
+                        {"role": "user", "content": prompt}
+                    ],
+                    "temperature": 0.2,
+                    "max_tokens": 700
+                },
+                timeout=30
+            )
+            response.raise_for_status()
+
+            result = response.json()["choices"][0]["message"]["content"]
+
+            if result and result.strip():
+                logging.info("Stock-drop analysis completed using OpenRouter")
+                return "🟡 Backup AI: OpenRouter\n" + result.strip()
+
+        except Exception:
+            logging.exception("OpenRouter backup failed")
+    else:
+        logging.warning("OpenRouter API key is not configured")
+
+    logging.error("All three AI providers failed")
+    return "AI analysis unavailable. No cause has been verified."
 
 
 # --------------------------------------------------
