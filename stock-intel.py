@@ -256,6 +256,70 @@ BSE_RSS_FEEDS = {
 }
 
 
+def collect_marketaux_news():
+    """Fetch a small batch of financial news from Marketaux."""
+    api_key = os.getenv("MARKETAUX_API_KEY")
+
+    if not api_key:
+        logging.warning("MARKETAUX_API_KEY is not configured.")
+        return []
+
+    url = "https://api.marketaux.com/v1/news/all"
+
+    params = {
+        "api_token": api_key,
+        "language": "en",
+        "limit": 3,
+        "sort": "published_desc"
+    }
+
+    try:
+        response = requests.get(
+            url,
+            params=params,
+            timeout=20
+        )
+        response.raise_for_status()
+
+        payload = response.json()
+        articles = payload.get("data", [])
+        all_news = []
+
+        for article in articles:
+            title = (article.get("title") or "").strip()
+            link = (article.get("url") or "").strip()
+
+            if not title or not link:
+                continue
+
+            entities = article.get("entities") or []
+
+            matched_entities = []
+            for entity in entities:
+                matched_entities.append({
+                    "name": entity.get("name", ""),
+                    "symbol": entity.get("symbol", ""),
+                    "exchange": entity.get("exchange", "")
+                })
+
+            all_news.append({
+                "title": title,
+                "link": link,
+                "source": article.get("source", "Marketaux"),
+                "published": article.get("published_at", ""),
+                "entities": matched_entities
+            })
+
+        logging.info(
+            f"Marketaux returned {len(all_news)} financial news articles."
+        )
+        return all_news
+
+    except Exception as e:
+        logging.warning(f"Marketaux news collection failed: {e}")
+        return []
+
+
 def collect_media_rss():
     """Collect public headlines from Business Standard and Mint RSS feeds."""
     all_news = []
