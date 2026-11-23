@@ -948,6 +948,11 @@ def main():
     main_watchlist = spreadsheet.worksheet(
         MAIN_WATCHLIST_TAB
     ).get_all_records()
+
+    logging.info(
+        "MAINWATCHLIST ACTUAL HEADERS: %s",
+        list(main_watchlist[0].keys()) if main_watchlist else []
+    )    
     
     logging.info(
         "Read %s stocks from MainWatchlist for news intelligence",
