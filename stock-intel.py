@@ -459,9 +459,7 @@ def is_excluded_from_news(stock_row):
         "SENSEX",
         "INDEX",
         "INDICES",
-        "BEES",
-        "NSE",
-        "BSE"        
+        "BEES"     
     ]
 
     return any(
