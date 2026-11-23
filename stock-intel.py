@@ -19,6 +19,7 @@ from google.oauth2.service_account import Credentials
 SHEET_ID = "1O6hiefoF3IlStKFJrC7RD827GsOC5asWbEht6Sw_SC8"
 
 WATCHLIST_TAB = "Watchlist"
+MAIN_WATCHLIST_TAB = "MainWatchlist"
 VOLUME_TAB = "Volume_History"
 ALERT_LOG_TAB = "Alert_Log"
 
@@ -807,6 +808,15 @@ def main():
     watchlist = spreadsheet.worksheet(
         WATCHLIST_TAB
     ).get_all_records()
+
+    main_watchlist = spreadsheet.worksheet(
+        MAIN_WATCHLIST_TAB
+    ).get_all_records()
+    
+    logging.info(
+        "Read %s stocks from MainWatchlist for news intelligence",
+        len(main_watchlist)
+    )
 
     volume_rows = spreadsheet.worksheet(
         VOLUME_TAB
