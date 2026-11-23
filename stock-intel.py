@@ -992,6 +992,14 @@ def main():
                 collector.__name__,
                 len(collected)
             )
+
+            if collector.__name__ == "collect_google_news_rss":
+                for index, article in enumerate(collected[:60], start=1):
+                    logging.info(
+                        "GOOGLE NEWS %02d | %s",
+                        index,
+                        article.get("title", "No title")
+                    )
         except Exception as error:
             logging.warning(
                 "%s failed: %s",
