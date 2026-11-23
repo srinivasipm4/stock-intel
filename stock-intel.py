@@ -1016,21 +1016,24 @@ def main():
     matched_stock_count = 0
     matched_article_count = 0
 
+    
     for stock_row in main_watchlist:
 
-    if str(stock_row.get("CODE", "")).strip().upper() == "NSE:MARUTI":
-        logging.info("MARUTI ROW FOUND: %s", stock_row)
-        logging.info(
-            "MARUTI EXCLUSION RESULT: %s",
-            is_excluded_from_news(stock_row)
+        if str(stock_row.get("CODE", "")).strip().upper() == "NSE:MARUTI":
+            logging.info("MARUTI ROW FOUND: %s", stock_row)
+            logging.info(
+                "MARUTI EXCLUSION RESULT: %s",
+                is_excluded_from_news(stock_row)
+            )
+
+        if is_excluded_from_news(stock_row):
+            continue
+
+        row_identity = " ".join(
+            str(stock_row.get(key, ""))
+            for key in ["STOCK", "CODE", "COMPANY", "ALIASES"]
         )
 
-    if is_excluded_from_news(stock_row):
-        continue
-
-        row_identity = " ".join(str(stock_row.get(key, "")) for key in [
-            "STOCK", "CODE", "COMPANY", "ALIASES"
-        ])
 
         if "MARUTI" in row_identity.upper():
             logging.info("MARUTI DEBUG ROW: %s", row_identity)
