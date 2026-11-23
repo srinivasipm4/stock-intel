@@ -442,25 +442,38 @@ def collect_exchange_rss():
     return all_news
 
 
+
 def is_excluded_from_news(stock_row):
-    """Exclude indices and ETFs from company news analysis."""
+    """Exclude indices and ETFs, but retain ordinary listed companies."""
 
     identity = " ".join([
         str(stock_row.get("STOCK", "")),
         str(stock_row.get("COMPANY", "")),
-        str(stock_row.get("CODE", "")),
         str(stock_row.get("ALIASES", ""))
     ]).upper()
+
+    stock_code = str(stock_row.get("CODE", "")).upper()
 
     exclusion_terms = [
         "ETF",
         "NIFTY",
         "SENSEX",
-        "SENSEX",
         "INDEX",
         "INDICES",
-        "BEES"     
+        "BEES"
     ]
+
+    # Check company name, stock name and aliases.
+    for term in exclusion_terms:
+        if re.search(r"\b" + re.escape(term) + r"\b", identity):
+            return True
+
+    # Check index-specific codes, not ordinary NSE/BSE exchange prefixes.
+    if "INDEX" in stock_code:
+        return True
+
+    return False
+
 
     return any(
         re.search(
