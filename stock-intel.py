@@ -441,6 +441,39 @@ def collect_exchange_rss():
 
     return all_news
 
+
+def is_excluded_from_news(stock_row):
+    """Exclude indices and ETFs from company news analysis."""
+
+    identity = " ".join([
+        str(stock_row.get("STOCK", "")),
+        str(stock_row.get("COMPANY", "")),
+        str(stock_row.get("CODE", "")),
+        str(stock_row.get("ALIASES", ""))
+    ]).upper()
+
+    exclusion_terms = [
+        "ETF",
+        "NIFTY",
+        "SENSEX",
+        "SENSEX",
+        "INDEX",
+        "INDICES",
+        "BEES",
+        "NSE",
+        "BSE"        
+    ]
+
+    return any(
+        re.search(
+            r"\b" + re.escape(term) + r"\b",
+            identity
+        )
+        for term in exclusion_terms
+    )
+
+
+
 #Mathcing function
 
 def match_news_to_stock(stock_row, news_items):
@@ -971,6 +1004,9 @@ def main():
     matched_article_count = 0
 
     for stock_row in main_watchlist:
+        if is_excluded_from_news(stock_row):
+            continue
+
         matched_articles = match_news_to_stock(
             stock_row,
             alert_news
