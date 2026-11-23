@@ -474,17 +474,7 @@ def is_excluded_from_news(stock_row):
 
     return False
 
-
-    return any(
-        re.search(
-            r"\b" + re.escape(term) + r"\b",
-            identity
-        )
-        for term in exclusion_terms
-    )
-
-
-
+   
 #Mathcing function
 
 def match_news_to_stock(stock_row, news_items):
@@ -997,6 +987,7 @@ def main():
         collect_google_news_rss,
         collect_exchange_rss,
         collect_media_rss
+        
     ]
 
     for collector in news_collectors:
@@ -1030,13 +1021,6 @@ def main():
     
     for stock_row in main_watchlist:
 
-        if str(stock_row.get("CODE", "")).strip().upper() == "NSE:MARUTI":
-            logging.info("MARUTI ROW FOUND: %s", stock_row)
-            logging.info(
-                "MARUTI EXCLUSION RESULT: %s",
-                is_excluded_from_news(stock_row)
-            )
-
         if is_excluded_from_news(stock_row):
             continue
 
@@ -1045,15 +1029,7 @@ def main():
             for key in ["STOCK", "CODE", "COMPANY", "ALIASES"]
         )
 
-
-        if "MARUTI" in row_identity.upper():
-            logging.info("MARUTI DEBUG ROW: %s", row_identity)
-    
-            for item in alert_news:
-                title = str(item.get("title", ""))
-                if "maruti" in title.lower():
-                    logging.info("MARUTI CANDIDATE: %s", title)
-        
+            
         matched_articles = match_news_to_stock(
             stock_row,
             alert_news
@@ -1107,30 +1083,8 @@ def main():
 
         if not new_levels:
             continue
-                # Fetch news once per run, only when a new alert exists.
-        if alert_news is None:
-            alert_news = []
-
-            news_collectors = [
-                collect_google_news_rss,
-                collect_exchange_rss,
-                collect_media_rss,
-                collect_marketaux_news
-            ]
-
-            for collector in news_collectors:
-                try:
-                    alert_news.extend(collector())
-                except Exception:
-                    logging.exception(
-                        "News collection failed: %s",
-                        collector.__name__
-                    )
-
-            logging.info(
-                "Collected %s news articles for price-alert analysis",
-                len(alert_news)
-            )
+       
+            
         # Send one consolidated message if several levels
         # were crossed between scheduled scans.
         breached_levels = [
