@@ -937,8 +937,64 @@ def main():
         max(0, len(volume_rows) - 1)
     )
 
+    
     alerts_sent = 0
-    alert_news = None
+
+    # Collect broad RSS news on every scheduled run.
+    # Marketaux is intentionally excluded here to protect its free quota.
+    alert_news = []
+
+    news_collectors = [
+        collect_google_news_rss,
+        collect_exchange_rss,
+        collect_media_rss
+    ]
+
+    for collector in news_collectors:
+        try:
+            collected = collector()
+            alert_news.extend(collected)
+            logging.info(
+                "%s collected %s articles",
+                collector.__name__,
+                len(collected)
+            )
+        except Exception as error:
+            logging.warning(
+                "%s failed: %s",
+                collector.__name__,
+                error
+            )
+
+    # Match collected news against the complete MainWatchlist.
+    matched_stock_count = 0
+    matched_article_count = 0
+
+    for stock_row in main_watchlist:
+        matched_articles = match_news_to_stock(
+            stock_row,
+            alert_news
+        )
+
+        if matched_articles:
+            matched_stock_count += 1
+            matched_article_count += len(matched_articles)
+
+            logging.info(
+                "News matched: %s (%s) - %s articles",
+                stock_row.get("STOCK", ""),
+                stock_row.get("CODE", ""),
+                len(matched_articles)
+            )
+
+    logging.info(
+        "News scan completed: %s articles collected; "
+        "%s stocks matched; %s stock-article matches",
+        len(alert_news),
+        matched_stock_count,
+        matched_article_count
+    )
+
     
     for stock_row in watchlist:
         stock = str(stock_row.get("CODE", "")).strip()
