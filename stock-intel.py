@@ -441,6 +441,109 @@ def collect_exchange_rss():
 
     return all_news
 
+#Mathcing function
+
+def match_news_to_stock(stock_row, news_items):
+    """Find news articles matching one MainWatchlist stock."""
+
+    def normalise(value):
+        return re.sub(
+            r"[^a-z0-9]+",
+            " ",
+            str(value or "").lower()
+        ).strip()
+
+    stock_name = normalise(stock_row.get("STOCK", ""))
+    company_name = normalise(stock_row.get("COMPANY", ""))
+    stock_code = normalise(stock_row.get("CODE", ""))
+    aliases = [
+        normalise(alias)
+        for alias in str(stock_row.get("ALIASES", "")).split(",")
+        if normalise(alias)
+    ]
+
+    identity_names = [
+        name for name in [
+            stock_name,
+            company_name,
+            *aliases
+        ]
+        if name
+    ]
+
+    code_parts = stock_code.split()
+    ticker = code_parts[-1] if code_parts else ""
+
+    generic_words = {
+        "limited", "ltd", "industries", "industry",
+        "company", "corporation", "corporate",
+        "enterprises", "enterprise", "india", "indian",
+        "group", "services", "service", "holdings",
+        "holding", "private", "public"
+    }
+
+    name_terms = {
+        word
+        for name in identity_names
+        for word in name.split()
+        if len(word) >= 5 and word not in generic_words
+    }
+
+    matched_articles = []
+
+    for item in news_items:
+        searchable = normalise(" ".join([
+            str(item.get("title", "")),
+            str(item.get("description", "")),
+            str(item.get("summary", "")),
+            str(item.get("content", "")),
+            str(item.get("entities", "")),
+            str(item.get("matched_entities", "")),
+            str(item.get("link", ""))
+        ]))
+
+        score = 0
+
+        for name in identity_names:
+            if re.search(
+                r"\b" + re.escape(name) + r"\b",
+                searchable
+            ):
+                score += 12
+                break
+
+        if ticker and len(ticker) >= 3:
+            if re.search(
+                r"\b" + re.escape(ticker) + r"\b",
+                searchable
+            ):
+                score += 8
+
+        matched_terms = {
+            term for term in name_terms
+            if re.search(
+                r"\b" + re.escape(term) + r"\b",
+                searchable
+            )
+        }
+
+        if len(matched_terms) >= 2:
+            score += min(6, len(matched_terms) * 2)
+
+        if score > 0:
+            matched_articles.append((score, item))
+
+    matched_articles.sort(
+        key=lambda entry: entry[0],
+        reverse=True
+    )
+
+    return [
+        item for _, item in matched_articles
+    ]
+
+
+
 def analyze_stock_drop(
     stock_name,
     stock_code,
