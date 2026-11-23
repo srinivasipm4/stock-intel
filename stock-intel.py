@@ -1015,6 +1015,18 @@ def main():
         if is_excluded_from_news(stock_row):
             continue
 
+        row_identity = " ".join(str(stock_row.get(key, "")) for key in [
+            "STOCK", "CODE", "COMPANY", "ALIASES"
+        ])
+
+        if "MARUTI" in row_identity.upper():
+            logging.info("MARUTI DEBUG ROW: %s", row_identity)
+    
+            for item in alert_news:
+                title = str(item.get("title", ""))
+                if "maruti" in title.lower():
+                    logging.info("MARUTI CANDIDATE: %s", title)
+        
         matched_articles = match_news_to_stock(
             stock_row,
             alert_news
