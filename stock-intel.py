@@ -4,7 +4,8 @@ import json
 import logging
 import re
 import xml.etree.ElementTree as ET
-from datetime import datetime
+from datetime import datetime, timedelta
+from email.utils import parsedate_to_datetime
 from zoneinfo import ZoneInfo
 
 import gspread
@@ -933,6 +934,87 @@ def record_alert(date, stock, level, price_change):
     )
 
 
+
+def record_news_article(article):
+    response = requests.post(
+        ALERT_WEB_APP_URL,
+        json={
+            "secret": ALERT_API_SECRET,
+            "type": "news",
+            "publishedDate": (
+                parsedate_to_datetime(article["published"])
+                .astimezone(IST)
+                .strftime("%Y-%m-%d")
+            ),
+            "collectedDate": datetime.now(IST).strftime("%Y-%m-%d"),
+            "headline": article.get("title", ""),
+            "source": article.get("source", ""),
+            "articleUrl": article.get("link", ""),
+            "matchedStockCodes": article.get("matched_stock_codes", ""),
+            "matchedStockNames": article.get("matched_stock_names", ""),
+            "relevanceScore": article.get("relevance_score", 0),
+            "alertStatus": article.get("alert_status", "COLLECTED"),
+            "lastAnalysedDate": ""
+        },
+        timeout=30,
+        allow_redirects=True
+    )
+
+    response.raise_for_status()
+
+    try:
+        result = response.json()
+    except ValueError as error:
+        raise RuntimeError(
+            "News archive returned an unreadable response."
+        ) from error
+
+    if not result.get("success"):
+        raise RuntimeError(
+            f"News archive rejected the article: {result}"
+        )
+
+    logging.info(
+        "News article archived: %s (duplicate=%s)",
+        article.get("title", ""),
+        result.get("duplicate", False)
+    )
+
+
+#48-hour news date checker
+
+def is_within_news_window(article, now=None):
+    published = str(article.get("published", "")).strip()
+
+    if not published:
+        return False
+
+    try:
+        published_dt = parsedate_to_datetime(published)
+    except (TypeError, ValueError, OverflowError):
+        try:
+            published_dt = datetime.fromisoformat(
+                published.replace("Z", "+00:00")
+            )
+        except (TypeError, ValueError, OverflowError):
+            return False
+
+    ist = ZoneInfo("Asia/Kolkata")
+
+    if published_dt.tzinfo is None:
+        published_dt = published_dt.replace(tzinfo=ist)
+
+    current = now or datetime.now(ist)
+
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=ist)
+
+    age = current.astimezone(ist) - published_dt.astimezone(ist)
+
+    return timedelta(0) <= age <= timedelta(hours=48)
+
+
+
 # --------------------------------------------------
 # Main alert engine
 # --------------------------------------------------
@@ -993,7 +1075,19 @@ def main():
     for collector in news_collectors:
         try:
             collected = collector()
-            alert_news.extend(collected)
+            recent_news = [
+                article for article in collected
+                if is_within_news_window(article)
+            ]
+            alert_news.extend(recent_news)
+            
+            logging.info(
+                "%s: %s articles collected, %s within 48 hours",
+                collector.__name__,
+                len(collected),
+                len(recent_news)
+            )
+            
             logging.info(
                 "%s collected %s articles",
                 collector.__name__,
@@ -1017,34 +1111,75 @@ def main():
     # Match collected news against the complete MainWatchlist.
     matched_stock_count = 0
     matched_article_count = 0
-
     
-    for stock_row in main_watchlist:
-
-        if is_excluded_from_news(stock_row):
-            continue
-
-        row_identity = " ".join(
-            str(stock_row.get(key, ""))
-            for key in ["STOCK", "CODE", "COMPANY", "ALIASES"]
-        )
-
-            
-        matched_articles = match_news_to_stock(
-            stock_row,
-            alert_news
-        )
-
-        if matched_articles:
-            matched_stock_count += 1
-            matched_article_count += len(matched_articles)
-
-            logging.info(
-                "News matched: %s (%s) - %s articles",
-                stock_row.get("STOCK", ""),
-                stock_row.get("CODE", ""),
-                len(matched_articles)
+        articles_to_archive = {}
+    
+        for stock_row in main_watchlist:
+    
+            if is_excluded_from_news(stock_row):
+                continue
+    
+            matched_articles = match_news_to_stock(
+                stock_row,
+                alert_news
             )
+    
+            if matched_articles:
+                matched_stock_count += 1
+                matched_article_count += len(matched_articles)
+    
+                stock_code = str(stock_row.get("CODE", "")).strip()
+                stock_name = str(stock_row.get("STOCK", "")).strip()
+                company_name = str(stock_row.get("COMPANY", "")).strip()
+    
+                logging.info(
+                    "News matched: %s (%s) - %s articles",
+                    stock_name,
+                    stock_code,
+                    len(matched_articles)
+                )
+    
+                for article in matched_articles:
+                    article_url = str(article.get("link", "")).strip()
+    
+                    if not article_url.startswith(("https://", "http://")):
+                        continue
+    
+                    if article_url not in articles_to_archive:
+                        articles_to_archive[article_url] = {
+                            **article,
+                            "matched_stock_codes": set(),
+                            "matched_stock_names": set(),
+                            "relevance_score": 0,
+                            "alert_status": "MATCHED"
+                        }
+    
+                    if stock_code:
+                        articles_to_archive[article_url][
+                            "matched_stock_codes"
+                        ].add(stock_code)
+    
+                    if stock_name:
+                        articles_to_archive[article_url][
+                            "matched_stock_names"
+                        ].add(stock_name)
+    
+                    if company_name:
+                        articles_to_archive[article_url][
+                            "matched_stock_names"
+                        ].add(company_name)
+    
+        for article in articles_to_archive.values():
+            article["matched_stock_codes"] = ", ".join(
+                sorted(article["matched_stock_codes"])
+            )
+    
+            article["matched_stock_names"] = ", ".join(
+                sorted(article["matched_stock_names"])
+            )
+    
+            record_news_article(article)
+
 
     logging.info(
         "News scan completed: %s articles collected; "
