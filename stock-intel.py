@@ -54,7 +54,7 @@ def connect_to_spreadsheet():
     credentials = Credentials.from_service_account_info(
         credentials_info,
         scopes=[
-            "https://www.googleapis.com/auth/spreadsheets.readonly"
+            "https://www.googleapis.com/auth/spreadsheets"
         ]
     )
 
