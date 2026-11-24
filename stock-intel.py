@@ -1109,77 +1109,73 @@ def main():
             )
 
     # Match collected news against the complete MainWatchlist.
+    # Match collected news against the complete MainWatchlist.
     matched_stock_count = 0
     matched_article_count = 0
-    
-        articles_to_archive = {}
-    
-        for stock_row in main_watchlist:
-    
-            if is_excluded_from_news(stock_row):
-                continue
-    
-            matched_articles = match_news_to_stock(
-                stock_row,
-                alert_news
-            )
-    
-            if matched_articles:
-                matched_stock_count += 1
-                matched_article_count += len(matched_articles)
-    
-                stock_code = str(stock_row.get("CODE", "")).strip()
-                stock_name = str(stock_row.get("STOCK", "")).strip()
-                company_name = str(stock_row.get("COMPANY", "")).strip()
-    
-                logging.info(
-                    "News matched: %s (%s) - %s articles",
-                    stock_name,
-                    stock_code,
-                    len(matched_articles)
-                )
-    
-                for article in matched_articles:
-                    article_url = str(article.get("link", "")).strip()
-    
-                    if not article_url.startswith(("https://", "http://")):
-                        continue
-    
-                    if article_url not in articles_to_archive:
-                        articles_to_archive[article_url] = {
-                            **article,
-                            "matched_stock_codes": set(),
-                            "matched_stock_names": set(),
-                            "relevance_score": 0,
-                            "alert_status": "MATCHED"
-                        }
-    
-                    if stock_code:
-                        articles_to_archive[article_url][
-                            "matched_stock_codes"
-                        ].add(stock_code)
-    
-                    if stock_name:
-                        articles_to_archive[article_url][
-                            "matched_stock_names"
-                        ].add(stock_name)
-    
-                    if company_name:
-                        articles_to_archive[article_url][
-                            "matched_stock_names"
-                        ].add(company_name)
-    
-        for article in articles_to_archive.values():
-            article["matched_stock_codes"] = ", ".join(
-                sorted(article["matched_stock_codes"])
-            )
-    
-            article["matched_stock_names"] = ", ".join(
-                sorted(article["matched_stock_names"])
-            )
-    
-            record_news_article(article)
+    articles_to_archive = {}
 
+    for stock_row in main_watchlist:
+        if is_excluded_from_news(stock_row):
+            continue
+
+        matched_articles = match_news_to_stock(
+            stock_row,
+            alert_news
+        )
+
+        if matched_articles:
+            matched_stock_count += 1
+            matched_article_count += len(matched_articles)
+
+            stock_code = str(stock_row.get("CODE", "")).strip()
+            stock_name = str(stock_row.get("STOCK", "")).strip()
+            company_name = str(stock_row.get("COMPANY", "")).strip()
+
+            logging.info(
+                "News matched: %s (%s) - %s articles",
+                stock_name,
+                stock_code,
+                len(matched_articles)
+            )
+
+            for article in matched_articles:
+                article_url = str(article.get("link", "")).strip()
+
+                if not article_url.startswith(("https://", "http://")):
+                    continue
+
+                if article_url not in articles_to_archive:
+                    articles_to_archive[article_url] = {
+                        **article,
+                        "matched_stock_codes": set(),
+                        "matched_stock_names": set(),
+                        "relevance_score": 0,
+                        "alert_status": "MATCHED"
+                    }
+
+                if stock_code:
+                    articles_to_archive[article_url][
+                        "matched_stock_codes"
+                    ].add(stock_code)
+
+                if stock_name:
+                    articles_to_archive[article_url][
+                        "matched_stock_names"
+                    ].add(stock_name)
+
+                if company_name:
+                    articles_to_archive[article_url][
+                        "matched_stock_names"
+                    ].add(company_name)
+
+    for article in articles_to_archive.values():
+        article["matched_stock_codes"] = ", ".join(
+            sorted(article["matched_stock_codes"])
+        )
+        article["matched_stock_names"] = ", ".join(
+            sorted(article["matched_stock_names"])
+        )
+        record_news_article(article)
 
     logging.info(
         "News scan completed: %s articles collected; "
